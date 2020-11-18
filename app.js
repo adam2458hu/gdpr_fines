@@ -1,11 +1,14 @@
 //puppeteer csomag betöltése
 const puppeteer = require('puppeteer');
+//táblázattá konvertáláshoz szükséges csomag
+const ObjectsToCsv = require('objects-to-csv');
 
 function printGDPRData(){
 	(async()=>{
 		try {
+			console.log("Adatok gyűjtése folyamatban");
 			//böngésző indítása
-			browser = await puppeteer.launch({headless: false,'args' : [
+			browser = await puppeteer.launch({'args' : [
 			    '--no-sandbox',
 			    '--disable-setuid-sandbox'
 			]});
@@ -17,7 +20,7 @@ function printGDPRData(){
 
 			//1. index jelöli európa, 14 pedig magyarország adatait a privacy affairs szűrőjében
 			let countryIndexes=[1,14];
-			let countryNames=['Európa','Magyarország'];
+			let countriesToScrape=['Európa','Magyarország'];
 			//Európa és MO. adatait tartalmazó tömb
 			let countryObjects=[];
 			//az adott ország adatait tartalmazó weboldal kiértékelése
@@ -30,7 +33,7 @@ function printGDPRData(){
 				await page.click(`ul.c-list li:nth-child(${countryIndexes[i]})`);
 
 				//oldal kiértékelése
-				let scrapedPage = await page.evaluate(async()=>{
+				let scrapedPage = await page.evaluate(async({countriesToScrape,i})=>{
 					//várunk 10 mp-et hogy betöltődjön az oldalon minden script
 					await new Promise(function(resolve) { 
 				           setTimeout(resolve, 10000)
@@ -47,6 +50,7 @@ function printGDPRData(){
 					for(j=0;j<authorityCaseHTMLBlocks.length && j<30;j++){
 						let currentCase = document.createElement("div");
 						currentCase.innerHTML = authorityCaseHTMLBlocks[j];
+						let countryOfCase = (currentCase.querySelector('p:nth-child(2)').innerText).replace('Country: ','');
 						let dateOfViolation = currentCase.querySelector('p:nth-child(4)').innerText;
 						let fine = currentCase.querySelector('p:nth-child(5)').innerText;
 						let articleViolated = currentCase.querySelector('p:nth-child(7) a');
@@ -56,9 +60,11 @@ function printGDPRData(){
 							articleViolated = articleViolated.innerText;
 						}
 
-						datesOfViolations.push(dateOfViolation.substring(6,dateOfViolation.length));
-						fines.push(parseInt(fine.substring(7,fine.length).replace(/\s/g,'')));
-						articlesViolated.push(articleViolated);
+						if (!(countriesToScrape[i]=="Európa" && countryOfCase=="Hungary")) {
+							datesOfViolations.push(dateOfViolation.substring(6,dateOfViolation.length));
+							fines.push(parseInt(fine.substring(7,fine.length).replace(/\s/g,'')));
+							articlesViolated.push(articleViolated);
+						}
 					}
 
 					return {
@@ -66,8 +72,9 @@ function printGDPRData(){
 						fines,
 						articlesViolated
 					}
-				})
+				},{countriesToScrape,i});
 
+				console.log(scrapedPage.fines.sort(function(a,b){return a<b?1:-1}))
 				/*az egyes cikkek mellől az "a)" "b)" stb sztringek kiszűrése regex kifejezéssel*/
 				let allArticlesViolatedByCase=[];
 				scrapedPage.articlesViolated.forEach(articleViolated=>{
@@ -151,37 +158,52 @@ function printGDPRData(){
 				else if (a.name < b.name) return -1;
 			});
 			console.log("Az egyes cikkek összes előfordulási száma: ");
+			exportIntoCsv("most_violated_articles_by_all_country",mostViolatedArticlesByAllCountry);
 			mostViolatedArticlesByAllCountry.forEach(article=>{
 				console.log(article);
 			})
 			console.log("\n");
 
-			//
+			// adott ország esetén az egyes cikkek előfordulási száma
 			countryObjects.forEach((country,index,arr)=>{
-				console.log(countryNames[index]+" esetén az egyes cikkek előfordulási száma");
+				let tempArray=[];
+				console.log(countriesToScrape[index]+" esetén az egyes cikkek előfordulási száma");
 				mostViolatedArticlesByAllCountry.forEach(currentArticle=>{
 					if (country.articleObjects.filter(articleObject=>{return articleObject.name==currentArticle.name}).length>0) {
-						console.log(country.articleObjects.filter(articleObject=>{return articleObject.name==currentArticle.name})[0]);
+						let articleFound=country.articleObjects.filter(articleObject=>{return articleObject.name==currentArticle.name})[0];
+						tempArray.push(articleFound);
+						console.log(articleFound);
 					}
 				})
+				exportIntoCsv("most_violated_articles_in_"+countriesToScrape[index].toLowerCase(),tempArray);
 				if (index!==arr.length-1) console.log("\n")
 			})
 			console.log("\n");
 			
 			//A Magyarországon eddig kiszabott büntetések alakulása
 			console.log("A Magyarországon eddig kiszabott büntetések alakulása: ");
+			exportIntoCsv("fines_to_date_in_hungary",countryObjects[1].fineObjects);
 			countryObjects[1].fineObjects.forEach(fine=>{
 				console.log(fine);
 			})
 			console.log("\n");
-
+			console.log("Adatok gyűjtése és kiiratása befejezve");
 			debugger;
 
-			//await browser.close();
+			await browser.close();
 		} catch(err){
 			console.log(err);
 		}
 	})();
+}
+
+async function exportIntoCsv(fileName,data){
+	try {
+		const csv = new ObjectsToCsv(data);
+	  	await csv.toDisk(`./exports/${fileName}.csv`);
+	} catch(err){
+		console.log(err);
+	}
 }
 
 printGDPRData();
