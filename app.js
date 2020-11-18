@@ -81,7 +81,7 @@ function printGDPRData(){
 					allArticlesViolatedByCase.push(articleViolated.match(/Art.\s?[0-9]+/g));
 				});
 
-				/*mivel egy cikknek több pontja is lehet a) b), ezért egy ügy esetében 
+				/*mivel egy cikknek több pontja is lehet [a) b)], ezért egy ügy esetében 
 				 csak egyszer számoltam egy adott számú cikket*/
 				let uniqueArticlesViolatedByCase=[];
 				allArticlesViolatedByCase.forEach(articles=>{
@@ -103,7 +103,7 @@ function printGDPRData(){
 					})
 				})
 
-				/* a büntetések rendezése dátum szerint csökkenő sorrendben */
+				/* a büntetések rendezése dátum szerint növekvő sorrendben */
 				fineObjects.sort(function(a,b){
 					if (new Date(a.date) < new Date(b.date)) return -1;
 					else return 1;
